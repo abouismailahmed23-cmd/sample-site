@@ -2,7 +2,8 @@ name: Deploy static site to EC2
 
 on:
   push:
-    branches: [ "main", "workflow_dispatch" ]
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -11,29 +12,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Prepare SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
-
       - name: Copy files via SSH
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: ./
-          target: /home/${{ secrets.EC2_USER }}/temp
+          source: "."
+          target: "/home/${{ secrets.EC2_USER }}/temp"
+          strip_components: 0 # Ensures full folder structure is preserved
 
-      - name: Execute remote SSH commands to copy from temp to real folder
+      - name: Execute remote SSH commands
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            # Create target directory if it doesn't exist
+            sudo mkdir -p /usr/site/
+            # Move files from temp to real folder
             sudo cp -r /home/${{ secrets.EC2_USER }}/temp/* /usr/site/
-            sudo rm -rf /home/${{ secrets.EC2_USER }}/temp
+            # Clean up temp
+            rm -rf /home/${{ secrets.EC2_USER }}/temp
+            # Reload Nginx
             sudo nginx -t && sudo systemctl reload nginx
